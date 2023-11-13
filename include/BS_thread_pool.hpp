@@ -342,7 +342,7 @@ public:
         {
             multi_future<R> mf(blks.get_num_blocks());
             for (size_t i = 0; i < blks.get_num_blocks(); ++i)
-                mf[i] = submit(std::forward<F>(loop), blks.start(i), blks.end(i));
+                mf[i] = submit(i, std::forward<F>(loop), blks.start(i), blks.end(i));
             return mf;
         }
         else
@@ -406,7 +406,7 @@ public:
         if (blks.get_total_size() > 0)
         {
             for (size_t i = 0; i < blks.get_num_blocks(); ++i)
-                push_task(std::forward<F>(loop), blks.start(i), blks.end(i));
+                push_task(i, std::forward<F>(loop), blks.start(i), blks.end(i));
         }
     }
 
@@ -434,11 +434,11 @@ public:
      * @param args The zero or more arguments to pass to the function. Note that if the task is a class member function, the first argument must be a pointer to the object, i.e. &object (or this), followed by the actual arguments.
      */
     template <typename F, typename... A>
-    void push_task(F&& task, A&&... args)
+    void push_task(uint8_t priority, F&& task, A&&... args)
     {
         {
             const std::scoped_lock tasks_lock(tasks_mutex);
-            tasks.push(std::bind(std::forward<F>(task), std::forward<A>(args)...)); // cppcheck-suppress ignoredReturnValue
+            tasks.push(std::make_pair(priority, std::bind(std::forward<F>(task), std::forward<A>(args)...))); // cppcheck-suppress ignoredReturnValue
         }
         task_available_cv.notify_one();
     }
@@ -473,10 +473,11 @@ public:
      * @return A future to be used later to wait for the function to finish executing and/or obtain its returned value if it has one.
      */
     template <typename F, typename... A, typename R = std::invoke_result_t<std::decay_t<F>, std::decay_t<A>...>>
-    [[nodiscard]] std::future<R> submit(F&& task, A&&... args)
+    [[nodiscard]] std::future<R> submit(uint8_t priority, F&& task, A&&... args)
     {
         std::shared_ptr<std::promise<R>> task_promise = std::make_shared<std::promise<R>>();
         push_task(
+            priority,
             [task_function = std::bind(std::forward<F>(task), std::forward<A>(args)...), task_promise]
             {
                 try
@@ -622,6 +623,7 @@ private:
     void worker()
     {
         std::function<void()> task;
+        std::pair<uint8_t, std::function<void()>> p_and_t;
         while (true)
         {
             std::unique_lock tasks_lock(tasks_mutex);
@@ -630,7 +632,8 @@ private:
                 break;
             if (paused)
                 continue;
-            task = std::move(tasks.front());
+            p_and_t = std::move(tasks.top());
+            task = std::move(p_and_t.second);
             tasks.pop();
             ++tasks_running;
             tasks_lock.unlock();
@@ -661,10 +664,17 @@ private:
      */
     std::condition_variable tasks_done_cv = {};
 
+    struct compare {
+        template<typename U, typename V>
+        bool operator()(U const& lhs, V const& rhs) {return lhs.first < rhs.first;}
+    };
+
     /**
      * @brief A queue of tasks to be executed by the threads.
      */
-    std::queue<std::function<void()>> tasks = {};
+    std::priority_queue<std::pair<uint8_t, std::function<void()>>,
+                        std::vector<std::pair<uint8_t, std::function<void()>>>,
+                        compare> tasks = {};
 
     /**
      * @brief A counter for the total number of currently running tasks.

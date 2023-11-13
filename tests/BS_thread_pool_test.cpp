@@ -199,7 +199,7 @@ BS::concurrency_t count_unique_threads(P& pool)
         bool ID_release = false;
         pool.wait_for_tasks();
         for (std::thread::id& id : thread_IDs)
-            pool.push_task(
+            pool.push_task(0, 
                 [&total_count, &id, &ID_release, &ID_cv, &total_cv, &ID_mutex, &total_mutex]
                 {
                     id = std::this_thread::get_id();
@@ -276,7 +276,7 @@ void check_deadlock(const F&& task)
 {
     constexpr uint32_t tries = 10000;
     uint32_t i = 0;
-    check_deadlock_pool.push_task(
+    check_deadlock_pool.push_task(0, 
         [&i, &task]
         {
             do
@@ -343,14 +343,14 @@ void check_push_task(P& pool)
     dual_println("Checking that push_task() works for a function with no arguments or return value...");
     {
         bool flag = false;
-        pool.push_task([&flag] { flag = true; });
+        pool.push_task(0, [&flag] { flag = true; });
         pool.wait_for_tasks();
         check(flag);
     }
     dual_println("Checking that push_task() works for a function with one argument and no return value...");
     {
         bool flag = false;
-        pool.push_task([](bool* flag_) { *flag_ = true; }, &flag);
+        pool.push_task(0, [](bool* flag_) { *flag_ = true; }, &flag);
         pool.wait_for_tasks();
         check(flag);
     }
@@ -358,7 +358,7 @@ void check_push_task(P& pool)
     {
         bool flag1 = false;
         bool flag2 = false;
-        pool.push_task([](bool* flag1_, bool* flag2_) { *flag1_ = *flag2_ = true; }, &flag1, &flag2);
+        pool.push_task(0, [](bool* flag1_, bool* flag2_) { *flag1_ = *flag2_ = true; }, &flag1, &flag2);
         pool.wait_for_tasks();
         check(flag1 && flag2);
     }
@@ -366,7 +366,7 @@ void check_push_task(P& pool)
     {
         bool copied = false;
         bool moved = false;
-        pool.push_task(
+        pool.push_task(0, 
             [detect = detect_copy_move(), &copied, &moved]
             {
                 copied = detect.copied;
@@ -378,7 +378,7 @@ void check_push_task(P& pool)
     dual_println("Checking that push_task() correctly accepts arguments passed by value, reference, and constant reference...");
     {
         int64_t pass_me_by_value = 0;
-        pool.push_task(
+        pool.push_task(0, 
             [](int64_t passed_by_value)
             {
                 if (++passed_by_value)
@@ -388,12 +388,12 @@ void check_push_task(P& pool)
         pool.wait_for_tasks();
         check(pass_me_by_value == 0);
         int64_t pass_me_by_ref = 0;
-        pool.push_task([](int64_t& passed_by_ref) { ++passed_by_ref; }, std::ref(pass_me_by_ref));
+        pool.push_task(0, [](int64_t& passed_by_ref) { ++passed_by_ref; }, std::ref(pass_me_by_ref));
         pool.wait_for_tasks();
         check(pass_me_by_ref == 1);
         int64_t pass_me_by_cref = 0;
         std::atomic<bool> release = false;
-        pool.push_task(
+        pool.push_task(0, 
             [&release](const int64_t& passed_by_cref)
             {
                 while (!release)
@@ -420,26 +420,26 @@ void check_submit(P& pool)
     dual_println("Checking that submit() works for a function with no arguments or return value...");
     {
         bool flag = false;
-        pool.submit([&flag] { flag = true; }).wait();
+        pool.submit(0, [&flag] { flag = true; }).wait();
         check(flag);
     }
     dual_println("Checking that submit() works for a function with one argument and no return value...");
     {
         bool flag = false;
-        pool.submit([](bool* flag_) { *flag_ = true; }, &flag).wait();
+        pool.submit(0, [](bool* flag_) { *flag_ = true; }, &flag).wait();
         check(flag);
     }
     dual_println("Checking that submit() works for a function with two arguments and no return value...");
     {
         bool flag1 = false;
         bool flag2 = false;
-        pool.submit([](bool* flag1_, bool* flag2_) { *flag1_ = *flag2_ = true; }, &flag1, &flag2).wait();
+        pool.submit(0, [](bool* flag1_, bool* flag2_) { *flag1_ = *flag2_ = true; }, &flag1, &flag2).wait();
         check(flag1 && flag2);
     }
     dual_println("Checking that submit() works for a function with no arguments and a return value...");
     {
         bool flag = false;
-        std::future<int> flag_future = pool.submit(
+        std::future<int> flag_future = pool.submit(0, 
             [&flag]
             {
                 flag = true;
@@ -450,7 +450,7 @@ void check_submit(P& pool)
     dual_println("Checking that submit() works for a function with one argument and a return value...");
     {
         bool flag = false;
-        std::future<int> flag_future = pool.submit(
+        std::future<int> flag_future = pool.submit(0, 
             [](bool* flag_)
             {
                 *flag_ = true;
@@ -463,7 +463,7 @@ void check_submit(P& pool)
     {
         bool flag1 = false;
         bool flag2 = false;
-        std::future<int> flag_future = pool.submit(
+        std::future<int> flag_future = pool.submit(0, 
             [](bool* flag1_, bool* flag2_)
             {
                 *flag1_ = *flag2_ = true;
@@ -474,14 +474,14 @@ void check_submit(P& pool)
     }
     dual_println("Checking that submit() does not create unnecessary copies of the function object...");
     {
-        std::future<std::pair<bool, bool>> fut = pool.submit([detect = detect_copy_move()] { return std::pair(detect.copied, detect.moved); });
+        std::future<std::pair<bool, bool>> fut = pool.submit(0, [detect = detect_copy_move()] { return std::pair(detect.copied, detect.moved); });
         std::pair<bool, bool> result = fut.get();
         check(!result.first && result.second);
     }
     dual_println("Checking that submit() correctly accepts arguments passed by value, reference, and constant reference...");
     {
         int64_t pass_me_by_value = 0;
-        pool.submit(
+        pool.submit(0, 
                 [](int64_t passed_by_value)
                 {
                     if (++passed_by_value)
@@ -491,11 +491,11 @@ void check_submit(P& pool)
             .wait();
         check(pass_me_by_value == 0);
         int64_t pass_me_by_ref = 0;
-        pool.submit([](int64_t& passed_by_ref) { ++passed_by_ref; }, std::ref(pass_me_by_ref)).wait();
+        pool.submit(0, [](int64_t& passed_by_ref) { ++passed_by_ref; }, std::ref(pass_me_by_ref)).wait();
         check(pass_me_by_ref == 1);
         int64_t pass_me_by_cref = 0;
         std::atomic<bool> release = false;
-        std::future<void> fut = pool.submit(
+        std::future<void> fut = pool.submit(0, 
             [&release](const int64_t& passed_by_cref)
             {
                 while (!release)
@@ -550,39 +550,39 @@ public:
 
     void push_test_flag_no_args()
     {
-        pool.push_task(&flag_class<P>::set_flag_no_args, this);
+        pool.push_task(0, &flag_class<P>::set_flag_no_args, this);
         pool.wait_for_tasks();
         check(get_flag());
     }
 
     void push_test_flag_one_arg()
     {
-        pool.push_task(&flag_class<P>::set_flag_one_arg, this, true);
+        pool.push_task(0, &flag_class<P>::set_flag_one_arg, this, true);
         pool.wait_for_tasks();
         check(get_flag());
     }
 
     void submit_test_flag_no_args()
     {
-        pool.submit(&flag_class<P>::set_flag_no_args, this).wait();
+        pool.submit(0, &flag_class<P>::set_flag_no_args, this).wait();
         check(get_flag());
     }
 
     void submit_test_flag_one_arg()
     {
-        pool.submit(&flag_class<P>::set_flag_one_arg, this, true).wait();
+        pool.submit(0, &flag_class<P>::set_flag_one_arg, this, true).wait();
         check(get_flag());
     }
 
     void submit_test_flag_no_args_return()
     {
-        std::future<int> flag_future = pool.submit(&flag_class<P>::set_flag_no_args_return, this);
+        std::future<int> flag_future = pool.submit(0, &flag_class<P>::set_flag_no_args_return, this);
         check(flag_future.get() == 42 && get_flag());
     }
 
     void submit_test_flag_one_arg_return()
     {
-        std::future<int> flag_future = pool.submit(&flag_class<P>::set_flag_one_arg_return, this, true);
+        std::future<int> flag_future = pool.submit(0, &flag_class<P>::set_flag_one_arg_return, this, true);
         check(flag_future.get() == 42 && get_flag());
     }
 
@@ -603,39 +603,39 @@ void check_member_function(P& pool)
     dual_println("Checking that push_task() works for a member function with no arguments or return value...");
     {
         flag_class<P> flag(pool);
-        pool.push_task(&flag_class<P>::set_flag_no_args, &flag);
+        pool.push_task(0, &flag_class<P>::set_flag_no_args, &flag);
         pool.wait_for_tasks();
         check(flag.get_flag());
     }
     dual_println("Checking that push_task() works for a member function with one argument and no return value...");
     {
         flag_class<P> flag(pool);
-        pool.push_task(&flag_class<P>::set_flag_one_arg, &flag, true);
+        pool.push_task(0, &flag_class<P>::set_flag_one_arg, &flag, true);
         pool.wait_for_tasks();
         check(flag.get_flag());
     }
     dual_println("Checking that submit() works for a member function with no arguments or return value...");
     {
         flag_class<P> flag(pool);
-        pool.submit(&flag_class<P>::set_flag_no_args, &flag).wait();
+        pool.submit(0, &flag_class<P>::set_flag_no_args, &flag).wait();
         check(flag.get_flag());
     }
     dual_println("Checking that submit() works for a member function with one argument and no return value...");
     {
         flag_class<P> flag(pool);
-        pool.submit(&flag_class<P>::set_flag_one_arg, &flag, true).wait();
+        pool.submit(0, &flag_class<P>::set_flag_one_arg, &flag, true).wait();
         check(flag.get_flag());
     }
     dual_println("Checking that submit() works for a member function with no arguments and a return value...");
     {
         flag_class<P> flag(pool);
-        std::future<int> flag_future = pool.submit(&flag_class<P>::set_flag_no_args_return, &flag);
+        std::future<int> flag_future = pool.submit(0, &flag_class<P>::set_flag_no_args_return, &flag);
         check(flag_future.get() == 42 && flag.get_flag());
     }
     dual_println("Checking that submit() works for a member function with one argument and a return value...");
     {
         flag_class<P> flag(pool);
-        std::future<int> flag_future = pool.submit(&flag_class<P>::set_flag_one_arg_return, &flag, true);
+        std::future<int> flag_future = pool.submit(0, &flag_class<P>::set_flag_one_arg_return, &flag, true);
         check(flag_future.get() == 42 && flag.get_flag());
     }
 }
@@ -693,7 +693,7 @@ void check_wait_for_tasks(P& pool)
     const BS::concurrency_t n = pool.get_thread_count() * 10;
     std::unique_ptr<std::atomic<bool>[]> flags = std::make_unique<std::atomic<bool>[]>(n);
     for (BS::concurrency_t i = 0; i < n; ++i)
-        pool.push_task(
+        pool.push_task(0, 
             [&flags, i]
             {
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -719,7 +719,7 @@ void check_wait_for_tasks_blocks(P& pool)
     pool.wait_for_tasks();
     dual_println("Checking that wait_for_tasks() correctly blocks all external threads that call it...");
     std::atomic<bool> release = false;
-    pool.push_task(
+    pool.push_task(0, 
         [&release]
         {
             dual_println("Task submitted to pool 1 and waiting to be released...");
@@ -738,7 +738,7 @@ void check_wait_for_tasks_blocks(P& pool)
         flags[i] = true;
     };
     for (BS::concurrency_t i = 0; i < num_waiting_tasks; ++i)
-        temp_pool.push_task(waiting_task, i);
+        temp_pool.push_task(0, waiting_task, i);
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     bool any_flag_set = false;
     for (BS::concurrency_t i = 0; i < num_waiting_tasks; ++i)
@@ -762,12 +762,12 @@ void check_wait_for_tasks_deadlock()
 {
     dual_println("Checking for deadlocks when waiting for tasks...");
     P temp_pool(1);
-    temp_pool.push_task([] { std::this_thread::sleep_for(std::chrono::milliseconds(500)); });
+    temp_pool.push_task(0, [] { std::this_thread::sleep_for(std::chrono::milliseconds(500)); });
     constexpr uint32_t n_waiting_tasks = 1000;
     std::atomic<uint32_t> count = 0;
     for (uint32_t j = 0; j < n_waiting_tasks; ++j)
     {
-        check_deadlock_pool.push_task(
+        check_deadlock_pool.push_task(0, 
             [&temp_pool, &count]
             {
                 temp_pool.wait_for_tasks();
@@ -810,6 +810,7 @@ void check_wait_for_tasks_duration(BS::thread_pool& pool)
     pool.reset();
     std::atomic<bool> done = false;
     pool.push_task(
+        0,
         [&done]
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(250));
@@ -833,7 +834,7 @@ void check_wait_for_tasks_until(BS::thread_pool& pool)
     dual_println("Checking that wait_for_tasks_until() works...");
     pool.reset();
     std::atomic<bool> done = false;
-    pool.push_task(
+    pool.push_task(0, 
         [&done]
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(250));
@@ -990,7 +991,7 @@ void check_task_monitoring(BS::thread_pool& pool)
     dual_println("Submitting ", n * 3, " tasks.");
     std::unique_ptr<std::atomic<bool>[]> release = std::make_unique<std::atomic<bool>[]>(n * 3);
     for (BS::concurrency_t i = 0; i < n * 3; ++i)
-        pool.push_task(
+        pool.push_task(0, 
             [&release, i]
             {
                 while (!release[i])
@@ -1047,7 +1048,7 @@ void check_pausing(BS::thread_pool& pool)
     check(pool.is_paused() == true);
     dual_println("Submitting ", n * 3, " tasks, each one waiting for 200ms.");
     for (BS::concurrency_t i = 0; i < n * 3; ++i)
-        pool.push_task(
+        pool.push_task(i,
             [i]
             {
                 std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -1108,7 +1109,7 @@ void check_purge(BS::thread_pool& pool)
     dual_println("Submitting ", num_tasks, " tasks to the pool.");
     std::unique_ptr<std::atomic<bool>[]> done = std::make_unique<std::atomic<bool>[]>(num_tasks);
     for (size_t i = 0; i < num_tasks; ++i)
-        pool.push_task(
+        pool.push_task(0, 
             [&done, i]
             {
                 std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -1150,7 +1151,7 @@ void check_exceptions_submit(P& pool)
         dual_println("Throwing exception...");
         throw std::runtime_error("Exception thrown!");
     };
-    std::future<void> my_future = pool.submit(throws);
+    std::future<void> my_future = pool.submit(0, throws);
     try
     {
         my_future.get();
@@ -1178,8 +1179,8 @@ void check_exceptions_multi_future(BS::thread_pool& pool)
         throw std::runtime_error("Exception thrown!");
     };
     BS::multi_future<void> my_future;
-    my_future.push_back(pool.submit(throws));
-    my_future.push_back(pool.submit(throws));
+    my_future.push_back(pool.submit(0, throws));
+    my_future.push_back(pool.submit(0, throws));
     try
     {
         void(my_future.get());
